@@ -15,8 +15,6 @@ import android.media.ToneGenerator;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.PowerManager;
-import android.util.Log;
 import android.widget.TextView;
 
 import com.capture400d.eos.EOSConstant;
@@ -131,22 +129,19 @@ public class MainActivity extends Activity implements Runnable {
     public void run() {
         Debug.println("run");
         try {
-            int wait = 6;
+            int wait = 6; // Wait 6s before first connection
             for (int i = 0; i < wait; i++) {
                 Thread.sleep(1000);
                 print("please wait..." + (wait - i) + " seconds");
             }
             capture();
         } catch (InterruptedException e) {
-            Debug.println("run interrupted.");
             Debug.print(e);
         } catch (IOException e) {
             error_beep();
-            Debug.println("run IOException "+e.getClass().getName()+" message"+e.getMessage());
             Debug.print(e);
         } catch (Throwable e) {
             error_beep();
-            Debug.println("run Throwable "+e.getClass().getName()+" message"+e.getMessage());
             Debug.print(e);
         }
     }
@@ -163,10 +158,6 @@ public class MainActivity extends Activity implements Runnable {
         Debug.println("onResume device:" + device);
         if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
             setDevice(device);
-        } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
-            if (mDevice != null && mDevice.equals(device)) {
-                setDevice(null);
-            }
         } else {
             error_beep();
             print("No Canon EOS found.");
@@ -315,12 +306,13 @@ public class MainActivity extends Activity implements Runnable {
             boolean connectionOk = false;
             connection.execute(this.session);
             try {
-                connectionOk = connection.get(10, TimeUnit.SECONDS);
+                connectionOk = connection.get(10, TimeUnit.SECONDS); // 10s max for the connection
             } catch (ExecutionException e) {
                 error_beep();
                 Debug.print(e);
                 return;
             } catch (TimeoutException e) {
+                connection.cancel(true);
                 error_beep();
                 Debug.print(e);
                 return;
@@ -347,7 +339,45 @@ public class MainActivity extends Activity implements Runnable {
             }
 
             while (!this.objects.isEmpty()) {
-                downloadFile(session);
+                ObjectTransfer object = this.objects.remove(0);
+                print("Downloading [" + object.getFilename() + "] (1 of " + (this.objects.size() + 1) + ")...");
+
+                DownloadFile downloadFile = new DownloadFile();
+                downloadFile.execute(object);
+                byte[] buffer = null;
+
+                try {
+                    buffer = downloadFile.get(10, TimeUnit.SECONDS); // 10s max to transfer a file.
+                } catch (ExecutionException e) {
+                    error_beep();
+                    Debug.println("Failed to transfer object ["+object.getObjectId()+"]");
+                    Debug.print(e);
+                } catch (TimeoutException e) {
+                    downloadFile.cancel(true);
+                    Debug.println("Timeout to transfer object [" + object.getObjectId() + "]");
+                    error_beep();
+                    Debug.print(e);
+                }
+
+                if (buffer != null) {
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss");
+                    String fileName = sdf.format(new Date()) + object.getFilename().substring(object.getFilename().indexOf("."));
+
+                    File sdcard = Environment.getExternalStorageDirectory();
+                    File objectFile = new File(sdcard, "/Pictures/" + fileName);
+                    FileOutputStream fos = new FileOutputStream(objectFile);
+                    fos.write(buffer);
+                    fos.close();
+
+                    print2("Last downloaded file:\n[" + fileName + "]");
+                }
+                // Send TransferComplete command even if the file wasn't really downloaded.
+                sendCommand(new TransferComplete(session, object.getObjectId()));
+                Response response = new Response(receiveData());
+                if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
+                    error_beep();
+                    throw new RuntimeException("Failed to TransferComplete objectId=" + object.getObjectId() + " (0x" + Integer.toHexString(object.getObjectId()) + ")");
+                }
             }
             print("Waiting for capture...");
             beep();
@@ -376,74 +406,11 @@ public class MainActivity extends Activity implements Runnable {
                 }
             } else if (usbContainer instanceof Response) {
                 if (((Response) usbContainer).getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-                    error_beep();
                     Debug.println("Response KO:\n" + ((Response) usbContainer).toString());
                 }
                 break;
             }
         }
-    }
-
-    private void downloadFile(Session session) throws InterruptedException, IOException {
-        long startTime = System.currentTimeMillis();
-
-        ObjectTransfer object = this.objects.remove(0);
-
-        print("Downloading [" + object.getFilename() + "] (1 of "+(this.objects.size()+1)+")...");
-
-        byte[] buffer = new byte[object.getSize()];
-        int bufferIndex = 0;
-        int lastBufferIndex = 0;
-        int retry = 0;
-        sendCommand(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));
-        int delta = 12;
-        while (bufferIndex < object.getSize()) {
-            EOSData data = new EOSData(receiveData());
-            if (data.getBlockType() == 3) { // Response block
-                if (data.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-                    // Response KO.
-                    retry++;
-                    if (retry < 2) {
-                        Debug.println("Failed to GetObject from " + lastBufferIndex + " size:" + (buffer.length - lastBufferIndex) + " retry "+retry+" ...");
-                        bufferIndex = lastBufferIndex;
-                    } else {
-                        error_beep();
-                        throw new RuntimeException("Failed to GetObject from " + lastBufferIndex + " size:" + (buffer.length - lastBufferIndex)+" after "+(retry-1)+" retry.");
-                    }
-                } else {
-                    retry = 0;
-                }
-                sendCommand(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));
-                lastBufferIndex = bufferIndex;
-                Debug.println("size:" + Math.min(0xff000, buffer.length - bufferIndex));
-                delta = 12;
-            } else {
-                // download data
-                bufferIndex += ByteUtils.copy(data.getData(), buffer, delta, bufferIndex);
-                print("downloaded:"+(bufferIndex*100/object.getSize())+"%");
-                Debug.println("delta:" + delta + " " + bufferIndex + "/" + object.getSize());
-                if (delta == 12) {
-                    delta = 0;
-                }
-            }
-        }
-
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss");
-        String fileName = sdf.format(new Date())+object.getFilename().substring(object.getFilename().indexOf("."));
-
-        File sdcard = Environment.getExternalStorageDirectory();
-        File objectFile = new File(sdcard, "/Pictures/"+fileName);
-        FileOutputStream fos = new FileOutputStream(objectFile);
-        fos.write(buffer);
-        fos.close();
-
-        sendCommand(new TransferComplete(session, object.getObjectId()));
-        Response response = new Response(receiveData());
-        if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-            error_beep();
-            throw new RuntimeException("Failed to TransferComplete objectId=" + object.getObjectId() + " (0x" + Integer.toHexString(object.getObjectId()) + ")");
-        }
-        print2("Last downloaded file:\n["+fileName+"] "+object.getSize()+" bytes in " + (System.currentTimeMillis() - startTime) + "ms.");
     }
 
     private void print(String text) {
@@ -477,11 +444,15 @@ public class MainActivity extends Activity implements Runnable {
         toneG.startTone(type, duration);
     }
 
-    private class InitConnection extends AsyncTask<Session, Integer, Boolean> {
+    /**
+     * Init connection with the camera
+     */
+    private class InitConnection extends AsyncTask<Session, String, Boolean> {
 
         @Override
-        protected Boolean doInBackground(Session... params) {
-            print("1/7 Open session...");
+        protected Boolean doInBackground(Session... sessions) {
+            Session session = sessions[0];
+            publishProgress("1/7 Open session...");
             try {
                 sendCommand(new OpenSession(session));
             } catch (InterruptedException e) {
@@ -495,7 +466,7 @@ public class MainActivity extends Activity implements Runnable {
             session.open();
             Debug.println("Session opened.");
 
-            print("2/7 Set Extended Event Info...");
+            publishProgress("2/7 Set Extended Event Info...");
             try {
                 sendCommand(new SetExtendedEventInfo(session));
             } catch (InterruptedException e) {
@@ -508,7 +479,7 @@ public class MainActivity extends Activity implements Runnable {
             }
             Debug.println("Event info extended.");
 
-            print("3/7 Set PC connect mode 1...");
+            publishProgress("3/7 Set PC connect mode 1...");
             try {
                 sendCommand(new SetPCConnectMode(session, 1));
             } catch (InterruptedException e) {
@@ -521,7 +492,7 @@ public class MainActivity extends Activity implements Runnable {
             }
             Debug.println("PC connect set to 1.");
 
-            print("4/7 Give host storage capacity...");
+            publishProgress("4/7 Give host storage capacity...");
             try {
                 sendCommand(new PCHDDCapacity(session, 0x1007fffffffl, 1));
             } catch (InterruptedException e) {
@@ -534,7 +505,7 @@ public class MainActivity extends Activity implements Runnable {
             }
             Debug.println("Host storage capacity given.");
 
-            print("5/7 Set Capture Destination 1...");
+            publishProgress("5/7 Set Capture Destination 1...");
             try {
                 sendCommand(new SetDevicePropValue(session));
                 sendData(new SetDevicePropValueData(session, EOSConstant.DeviceProperty_CaptureDestination, 1));
@@ -548,7 +519,7 @@ public class MainActivity extends Activity implements Runnable {
             }
             Debug.println("Capture destination set to 1.");
 
-            print("6/7 Get Device Info...");
+            publishProgress("6/7 Get Device Info...");
             try {
                 sendCommand(new GetDeviceInfo(session));
             } catch (InterruptedException e) {
@@ -559,7 +530,7 @@ public class MainActivity extends Activity implements Runnable {
             response = new Response(receiveData());
             Debug.println("Device info obtained.");
 
-            print("7/7 Set Capture Destination 4...");
+            publishProgress("7/7 Set Capture Destination 4...");
             try {
                 sendCommand(new SetDevicePropValue(session));
                 sendData(new SetDevicePropValueData(session, EOSConstant.DeviceProperty_CaptureDestination, 4));
@@ -573,6 +544,71 @@ public class MainActivity extends Activity implements Runnable {
             }
             Debug.println("Capture Destination set to 4.");
             return true;
+        }
+
+        @Override
+        protected void onProgressUpdate(String... values) {
+            super.onProgressUpdate(values);
+            print(values[0]);
+        }
+    }
+
+    /**
+     * Download a file from the camera
+     */
+    private class DownloadFile extends AsyncTask<ObjectTransfer, String, byte[]> {
+
+        @Override
+        protected byte[] doInBackground(ObjectTransfer... objects) {
+            long startTime = System.currentTimeMillis();
+
+            ObjectTransfer object = objects[0];
+
+            byte[] buffer = new byte[object.getSize()];
+            int bufferIndex = 0;
+            int lastBufferIndex = 0;
+            try {
+                sendCommand(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));
+            } catch (InterruptedException e) {
+                Debug.print(e);
+                return buffer;
+            }
+            int delta = 12;
+            while (bufferIndex < object.getSize()) {
+                EOSData data = new EOSData(receiveData());
+                if (data.getBlockType() == 3) { // Response block
+                    if (data.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
+                        // Response KO.
+                        error_beep();
+                        throw new RuntimeException("Failed to GetObject from " + lastBufferIndex + " size:" + (buffer.length - lastBufferIndex));
+                    }
+                    try {
+                        sendCommand(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));
+                    } catch (InterruptedException e) {
+                        Debug.print(e);
+                        return buffer;
+                    }
+                    lastBufferIndex = bufferIndex;
+                    Debug.println("size:" + Math.min(0xff000, buffer.length - bufferIndex));
+                    delta = 12;
+                } else {
+                    // download data
+                    bufferIndex += ByteUtils.copy(data.getData(), buffer, delta, bufferIndex);
+                    publishProgress("downloaded:"+(bufferIndex*100/object.getSize())+"%");
+                    Debug.println("delta:" + delta + " " + bufferIndex + "/" + object.getSize());
+                    if (delta == 12) {
+                        delta = 0;
+                    }
+                }
+            }
+            publishProgress("Download completed : " + object.getSize() + " bytes in " + (System.currentTimeMillis() - startTime) + "ms.");
+            return buffer;
+        }
+
+        @Override
+        protected void onProgressUpdate(String... values) {
+            super.onProgressUpdate(values);
+            print(values[0]);
         }
     }
 
