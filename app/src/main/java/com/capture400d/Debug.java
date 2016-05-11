@@ -17,12 +17,13 @@ import java.util.List;
 public class Debug {
 
     private static BufferedWriter logWriter;
-    private static SimpleDateFormat sdf = new SimpleDateFormat("HHmmss");
+    private static File logFile;
+    private static SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
 
     public static void open() {
         try {
             File sdcard = Environment.getExternalStorageDirectory();
-            File logFile = new File(sdcard, "debug.log");
+            logFile = new File(sdcard, "debug.log");
             logWriter = new BufferedWriter(new FileWriter(logFile));
         } catch (java.io.IOException e) {
             e.printStackTrace();
@@ -61,5 +62,14 @@ public class Debug {
         PrintWriter pw = new PrintWriter(sw);
         e.printStackTrace(pw);
         println(sw.toString()); // stack trace as a string
+        rotateFile();
+    }
+
+    private static void rotateFile() {
+        close();
+        File sdcard = Environment.getExternalStorageDirectory();
+        File errorFile = new File(sdcard, "error"+sdf.format(new Date())+".log");
+        logFile.renameTo(errorFile);
+        open();
     }
 }
