@@ -22,6 +22,7 @@ public class Debug {
 
     public static void open() {
         try {
+            rotateFile();
             File sdcard = Environment.getExternalStorageDirectory();
             logFile = new File(sdcard, "debug.log");
             logWriter = new BufferedWriter(new FileWriter(logFile));
@@ -66,10 +67,11 @@ public class Debug {
     }
 
     private static void rotateFile() {
-        close();
         File sdcard = Environment.getExternalStorageDirectory();
-        File errorFile = new File(sdcard, "error"+sdf.format(new Date())+".log");
-        logFile.renameTo(errorFile);
-        open();
+        File newFile = new File(sdcard, "debug.log");
+        if (newFile.exists()) {
+            File oldFile = new File(sdcard, "old_" + sdf.format(new Date()) + ".log");
+            newFile.renameTo(oldFile);
+        }
     }
 }

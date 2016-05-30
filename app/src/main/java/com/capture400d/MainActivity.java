@@ -429,6 +429,10 @@ public class MainActivity extends Activity implements Runnable {
         }
     }
 
+    private void small_beep() {
+        beep(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 50);
+    }
+
     private void beep() {
         beep(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 200);
     }
@@ -464,6 +468,7 @@ public class MainActivity extends Activity implements Runnable {
                 throw new RuntimeException("Failed to OpenSession.");
             }
             session.open();
+            small_beep();
             Debug.println("Session opened.");
 
             publishProgress("2/7 Set Extended Event Info...");
@@ -477,6 +482,7 @@ public class MainActivity extends Activity implements Runnable {
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 throw new RuntimeException("Failed to SetExtendedEventInfo.");
             }
+            small_beep();
             Debug.println("Event info extended.");
 
             publishProgress("3/7 Set PC connect mode 1...");
@@ -490,6 +496,7 @@ public class MainActivity extends Activity implements Runnable {
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 throw new RuntimeException("Failed to SetPCConnectMode 1.");
             }
+            small_beep();
             Debug.println("PC connect set to 1.");
 
             publishProgress("4/7 Give host storage capacity...");
@@ -503,6 +510,7 @@ public class MainActivity extends Activity implements Runnable {
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 throw new RuntimeException("Failed to PCHDDCapacity 0x1007fffffff 1.");
             }
+            small_beep();
             Debug.println("Host storage capacity given.");
 
             publishProgress("5/7 Set Capture Destination 1...");
@@ -517,6 +525,7 @@ public class MainActivity extends Activity implements Runnable {
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 throw new RuntimeException("Failed to SetDevicePropValue CaptureDestination=1");
             }
+            small_beep();
             Debug.println("Capture destination set to 1.");
 
             publishProgress("6/7 Get Device Info...");
@@ -528,6 +537,7 @@ public class MainActivity extends Activity implements Runnable {
             }
             new EOSData(receiveData());
             response = new Response(receiveData());
+            small_beep();
             Debug.println("Device info obtained.");
 
             publishProgress("7/7 Set Capture Destination 4...");
@@ -542,6 +552,7 @@ public class MainActivity extends Activity implements Runnable {
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 throw new RuntimeException("Failed to SetDevicePropValue CaptureDestination=4");
             }
+            small_beep();
             Debug.println("Capture Destination set to 4.");
             return true;
         }
@@ -576,7 +587,7 @@ public class MainActivity extends Activity implements Runnable {
             int delta = 12;
             while (bufferIndex < object.getSize()) {
                 EOSData data = new EOSData(receiveData());
-                if (data.getBlockType() == 3) { // Response block
+                if (data.getLength() == 16 && data.getBlockType() == 3) { // Response block
                     if (data.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                         // Response KO.
                         error_beep();
@@ -589,12 +600,14 @@ public class MainActivity extends Activity implements Runnable {
                         return buffer;
                     }
                     lastBufferIndex = bufferIndex;
+                    small_beep();
                     Debug.println("size:" + Math.min(0xff000, buffer.length - bufferIndex));
                     delta = 12;
                 } else {
                     // download data
                     bufferIndex += ByteUtils.copy(data.getData(), buffer, delta, bufferIndex);
                     publishProgress("downloaded:"+(bufferIndex*100/object.getSize())+"%");
+                    small_beep();
                     Debug.println("delta:" + delta + " " + bufferIndex + "/" + object.getSize());
                     if (delta == 12) {
                         delta = 0;
