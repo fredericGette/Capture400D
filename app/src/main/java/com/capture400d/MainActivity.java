@@ -430,7 +430,7 @@ public class MainActivity extends Activity implements Runnable {
     }
 
     private void small_beep() {
-        beep(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 50);
+        //beep(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 50);
     }
 
     private void beep() {
