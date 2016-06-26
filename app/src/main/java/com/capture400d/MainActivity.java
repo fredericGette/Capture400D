@@ -603,6 +603,8 @@ public class MainActivity extends Activity implements Runnable {
                     small_beep();
                     Debug.println("size:" + Math.min(0xff000, buffer.length - bufferIndex));
                     delta = 12;
+                } else if (data.getLength() == 12 && data.getBlockType() == 3) {
+                    Debug.println("Message ignored. Received XID:"+data.getXID()+", last XID sent:"+session.getXID());
                 } else {
                     // download data
                     bufferIndex += ByteUtils.copy(data.getData(), buffer, delta, bufferIndex);
