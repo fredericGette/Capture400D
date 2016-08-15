@@ -46,6 +46,7 @@ import java.util.concurrent.TimeoutException;
 
 import usb.jphoto.Command;
 import usb.jphoto.Container;
+import usb.jphoto.Data;
 import usb.jphoto.Response;
 import usb.jphoto.Session;
 
@@ -586,7 +587,7 @@ public class MainActivity extends Activity implements Runnable {
             }
             int delta = 12;
             while (bufferIndex < object.getSize()) {
-                EOSData data = new EOSData(receiveData());
+                Data data = new Data(receiveData());
                 if (data.getLength() == 16 && data.getBlockType() == 3) { // Response block
                     if (data.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                         // Response KO.
