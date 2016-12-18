@@ -3,7 +3,7 @@ Very simple android app to retrieve "on the fly" captured pictures from a Canon 
 
 Thanks to this app I can continue to use my old Canon even if its CF slot is broken.
 
-- Connect your Canon EOS 400D to your android device.
+- Connect your Canon EOS 400D to your android device via USB.
 - Turn on the camera.
 - If this is the first time: instruct your android device to always use this app with this camera.
 - Wait initialization (the app "beeps" at the end of the initialization process).
