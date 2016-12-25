@@ -196,12 +196,14 @@ public class MainActivity extends Activity implements Runnable {
                     this.captureThread = new Thread(this);
                     this.captureThread.start();
                     registerUsbDetachedReceiver();
+                    this.mDevice = device;
                 } else {
                     error_beep();
                     Debug.println("setDevice open FAIL");
                     print("Connection failed.");
                     this.mConnection = null;
                     this.session = null;
+                    this.mDevice = null;
                 }
             } else if (device == null && this.mDevice == null) {
                 error_beep();
@@ -215,15 +217,16 @@ public class MainActivity extends Activity implements Runnable {
                 this.mConnection = null;
                 this.session = null;
                 unregisterUsbDetachedReceiver();
+                this.mDevice = null;
                 finish();
             } else if (device != null && this.mDevice != null) {
                 Debug.println("Device already connected.");
+                this.mDevice = device;
             }
         } catch (Throwable e) {
             error_beep();
             Debug.print(e);
         }
-        this.mDevice = device;
     }
 
     private void registerUsbDetachedReceiver() {
@@ -377,7 +380,7 @@ public class MainActivity extends Activity implements Runnable {
                 Response response = new Response(receiveData());
                 if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                     error_beep();
-                    throw new RuntimeException("Failed to TransferComplete objectId=" + object.getObjectId() + " (0x" + Integer.toHexString(object.getObjectId()) + ")");
+                    print2("Failed to TransferComplete objectId=" + object.getObjectId() + " (0x" + Integer.toHexString(object.getObjectId()) + ")");
                 }
             }
             print("Waiting for capture...");
@@ -466,7 +469,8 @@ public class MainActivity extends Activity implements Runnable {
             }
             Response response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-                throw new RuntimeException("Failed to OpenSession.");
+                publishProgress("1/7 Failed to OpenSession !");
+                return false;
             }
             session.open();
             small_beep();
@@ -481,7 +485,8 @@ public class MainActivity extends Activity implements Runnable {
             }
             response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-                throw new RuntimeException("Failed to SetExtendedEventInfo.");
+                publishProgress("2/7 Failed to SetExtendedEventInfo !");
+                return false;
             }
             small_beep();
             Debug.println("Event info extended.");
@@ -495,7 +500,8 @@ public class MainActivity extends Activity implements Runnable {
             }
             response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-                throw new RuntimeException("Failed to SetPCConnectMode 1.");
+                publishProgress("3/7 Failed to SetPCConnectMode 1 !");
+                return false;
             }
             small_beep();
             Debug.println("PC connect set to 1.");
@@ -509,7 +515,8 @@ public class MainActivity extends Activity implements Runnable {
             }
             response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-                throw new RuntimeException("Failed to PCHDDCapacity 0x1007fffffff 1.");
+                publishProgress("4/7 Failed to PCHDDCapacity 0x1007fffffff 1 !");
+                return false;
             }
             small_beep();
             Debug.println("Host storage capacity given.");
@@ -524,7 +531,8 @@ public class MainActivity extends Activity implements Runnable {
             }
             response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-                throw new RuntimeException("Failed to SetDevicePropValue CaptureDestination=1");
+                publishProgress("5/7 Failed to SetDevicePropValue CaptureDestination=1 !");
+                return false;
             }
             small_beep();
             Debug.println("Capture destination set to 1.");
@@ -551,7 +559,8 @@ public class MainActivity extends Activity implements Runnable {
             }
             response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
-                throw new RuntimeException("Failed to SetDevicePropValue CaptureDestination=4");
+                publishProgress("7/7 Failed to SetDevicePropValue CaptureDestination=4 !");
+                return false;
             }
             small_beep();
             Debug.println("Capture Destination set to 4.");
@@ -592,7 +601,8 @@ public class MainActivity extends Activity implements Runnable {
                     if (data.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                         // Response KO.
                         error_beep();
-                        throw new RuntimeException("Failed to GetObject from " + lastBufferIndex + " size:" + (buffer.length - lastBufferIndex));
+                        publishProgress("Failed to GetObject from " + lastBufferIndex + " size:" + (buffer.length - lastBufferIndex));
+                        return buffer;
                     }
                     try {
                         sendCommand(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));

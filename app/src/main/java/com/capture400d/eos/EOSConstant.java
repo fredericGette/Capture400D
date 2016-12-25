@@ -25,6 +25,7 @@ public enum EOSConstant {
     OperationCode_ResetUILock(0x911C),
     
     ReponseCode_OK(0x2001),
+    ReponseCode_Busy(0x2019),
     
     Event_ObjectCreated(0xC181),
     Event_RequestObjectTransfer(0xC186),
