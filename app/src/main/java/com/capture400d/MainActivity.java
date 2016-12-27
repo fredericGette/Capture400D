@@ -130,11 +130,6 @@ public class MainActivity extends Activity implements Runnable {
     public void run() {
         Debug.println("run");
         try {
-            int wait = 6; // Wait 6s before first connection
-            for (int i = 0; i < wait; i++) {
-                Thread.sleep(1000);
-                print("please wait..." + (wait - i) + " seconds");
-            }
             capture();
         } catch (InterruptedException e) {
             Debug.print(e);
@@ -268,22 +263,27 @@ public class MainActivity extends Activity implements Runnable {
         }
     }
 
-    private void sendCommand(Command command) throws InterruptedException {
-        Debug.println("sendCommand command:" + command);
+    private void send(Container container) throws InterruptedException {
+        Debug.println("send:" + container);
         Thread.sleep(200); // Avoid sending burst of commands.
-        int sent = this.mConnection.bulkTransfer(this.mEndpointOut, command.getData(), command.getData().length, 1000);
-        if (sent != command.getData().length) {
-            Debug.println(sent + " bytes sent of " + command.getData().length + " bytes !");
+        int sent = this.mConnection.bulkTransfer(this.mEndpointOut, container.getData(), container.getData().length, 1000);
+        if (sent != container.getData().length) {
+            Debug.println(sent + " bytes sent of " + container.getData().length + " bytes !");
         }
     }
 
-    private void sendData(EOSData data) throws InterruptedException {
-        Debug.println("sendData data:" + data);
-        Thread.sleep(200); // Avoid sending burst of commands.
-        int sent = this.mConnection.bulkTransfer(this.mEndpointOut, data.getData(), data.getData().length, 1000);
-        if (sent != data.getData().length) {
-            Debug.println(sent + " bytes sent of " + data.getData().length + " bytes !");
-        }
+    private Response sendWaitResponse(Container ... containers) throws InterruptedException {
+        Response response = null;
+        do {
+            if (response != null) {
+                Debug.println("device Busy, re-sending...");
+            }
+            for (Container container : containers) {
+                send(container);
+            }
+            response = new Response(receiveData());
+        } while (response.getCode() == EOSConstant.ReponseCode_Busy.getValue());
+        return response;
     }
 
     private byte[] receiveData() {
@@ -333,7 +333,7 @@ public class MainActivity extends Activity implements Runnable {
         this.objects.clear();
         while (true) {
             while (this.objects.isEmpty()) {
-                sendCommand(new GetEvent(session));
+                send(new GetEvent(session));
                 processData();
             }
 
@@ -376,7 +376,7 @@ public class MainActivity extends Activity implements Runnable {
                     print2("Last downloaded file:\n[" + fileName + "]");
                 }
                 // Send TransferComplete command even if the file wasn't really downloaded.
-                sendCommand(new TransferComplete(session, object.getObjectId()));
+                send(new TransferComplete(session, object.getObjectId()));
                 Response response = new Response(receiveData());
                 if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                     error_beep();
@@ -433,10 +433,6 @@ public class MainActivity extends Activity implements Runnable {
         }
     }
 
-    private void small_beep() {
-        //beep(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 50);
-    }
-
     private void beep() {
         beep(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 200);
     }
@@ -461,108 +457,94 @@ public class MainActivity extends Activity implements Runnable {
         protected Boolean doInBackground(Session... sessions) {
             Session session = sessions[0];
             publishProgress("1/7 Open session...");
+            Response response = null;
             try {
-                sendCommand(new OpenSession(session));
+                response = sendWaitResponse(new OpenSession(session));
             } catch (InterruptedException e) {
                 Debug.print(e);
                 return false;
             }
-            Response response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 publishProgress("1/7 Failed to OpenSession !");
                 return false;
             }
             session.open();
-            small_beep();
             Debug.println("Session opened.");
 
             publishProgress("2/7 Set Extended Event Info...");
             try {
-                sendCommand(new SetExtendedEventInfo(session));
+                response = sendWaitResponse(new SetExtendedEventInfo(session));
             } catch (InterruptedException e) {
                 Debug.print(e);
                 return false;
             }
-            response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 publishProgress("2/7 Failed to SetExtendedEventInfo !");
                 return false;
             }
-            small_beep();
             Debug.println("Event info extended.");
 
             publishProgress("3/7 Set PC connect mode 1...");
             try {
-                sendCommand(new SetPCConnectMode(session, 1));
+                response = sendWaitResponse(new SetPCConnectMode(session, 1));
             } catch (InterruptedException e) {
                 Debug.print(e);
                 return false;
             }
-            response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 publishProgress("3/7 Failed to SetPCConnectMode 1 !");
                 return false;
             }
-            small_beep();
             Debug.println("PC connect set to 1.");
 
             publishProgress("4/7 Give host storage capacity...");
             try {
-                sendCommand(new PCHDDCapacity(session, 0x1007fffffffl, 1));
+                response = sendWaitResponse(new PCHDDCapacity(session, 0x1007fffffffl, 1));
             } catch (InterruptedException e) {
                 Debug.print(e);
                 return false;
             }
-            response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 publishProgress("4/7 Failed to PCHDDCapacity 0x1007fffffff 1 !");
                 return false;
             }
-            small_beep();
             Debug.println("Host storage capacity given.");
 
             publishProgress("5/7 Set Capture Destination 1...");
             try {
-                sendCommand(new SetDevicePropValue(session));
-                sendData(new SetDevicePropValueData(session, EOSConstant.DeviceProperty_CaptureDestination, 1));
+                 response = sendWaitResponse(new SetDevicePropValue(session), new SetDevicePropValueData(session, EOSConstant.DeviceProperty_CaptureDestination, 1));
             } catch (InterruptedException e) {
                 Debug.print(e);
                 return false;
             }
-            response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 publishProgress("5/7 Failed to SetDevicePropValue CaptureDestination=1 !");
                 return false;
             }
-            small_beep();
             Debug.println("Capture destination set to 1.");
 
             publishProgress("6/7 Get Device Info...");
             try {
-                sendCommand(new GetDeviceInfo(session));
+                send(new GetDeviceInfo(session));
             } catch (InterruptedException e) {
                 Debug.print(e);
                 return false;
             }
             new EOSData(receiveData());
             response = new Response(receiveData());
-            small_beep();
             Debug.println("Device info obtained.");
 
             publishProgress("7/7 Set Capture Destination 4...");
             try {
-                sendCommand(new SetDevicePropValue(session));
-                sendData(new SetDevicePropValueData(session, EOSConstant.DeviceProperty_CaptureDestination, 4));
+                response = sendWaitResponse(new SetDevicePropValue(session), new SetDevicePropValueData(session, EOSConstant.DeviceProperty_CaptureDestination, 4));
             } catch (InterruptedException e) {
                 Debug.print(e);
                 return false;
             }
-            response = new Response(receiveData());
             if (response.getCode() != EOSConstant.ReponseCode_OK.getValue()) {
                 publishProgress("7/7 Failed to SetDevicePropValue CaptureDestination=4 !");
                 return false;
             }
-            small_beep();
             Debug.println("Capture Destination set to 4.");
             return true;
         }
@@ -589,7 +571,7 @@ public class MainActivity extends Activity implements Runnable {
             int bufferIndex = 0;
             int lastBufferIndex = 0;
             try {
-                sendCommand(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));
+                send(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));
             } catch (InterruptedException e) {
                 Debug.print(e);
                 return buffer;
@@ -605,13 +587,12 @@ public class MainActivity extends Activity implements Runnable {
                         return buffer;
                     }
                     try {
-                        sendCommand(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));
+                        send(new GetObject(session, object.getObjectId(), bufferIndex, Math.min(0xff000, buffer.length - bufferIndex)));
                     } catch (InterruptedException e) {
                         Debug.print(e);
                         return buffer;
                     }
                     lastBufferIndex = bufferIndex;
-                    small_beep();
                     Debug.println("size:" + Math.min(0xff000, buffer.length - bufferIndex));
                     delta = 12;
                 } else if (data.getLength() == 12 && data.getBlockType() == 3) {
@@ -620,7 +601,6 @@ public class MainActivity extends Activity implements Runnable {
                     // download data
                     bufferIndex += ByteUtils.copy(data.getData(), buffer, delta, bufferIndex);
                     publishProgress("downloaded:"+(bufferIndex*100/object.getSize())+"%");
-                    small_beep();
                     Debug.println("delta:" + delta + " " + bufferIndex + "/" + object.getSize());
                     if (delta == 12) {
                         delta = 0;
