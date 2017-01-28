@@ -68,6 +68,7 @@ public class MainActivity extends Activity implements Runnable {
     private List<ObjectTransfer> objects = new ArrayList<ObjectTransfer>();
     private Thread captureThread;
 
+    private Thread displayThread;
     private TextView tView;
     private TextView tView2;
     private StringBuilder text;
@@ -85,7 +86,7 @@ public class MainActivity extends Activity implements Runnable {
         this.tView2 = (TextView)findViewById(R.id.lastDownloaded);
         this.text2 = new StringBuilder("Last downloaded file: none");
         this.tView2.setText(this.text2.toString());
-        Thread t = new Thread() {
+        this.displayThread = new Thread() {
 
             @Override
             public void run() {
@@ -109,7 +110,7 @@ public class MainActivity extends Activity implements Runnable {
                 }
             }
         };
-        t.start();
+        this.displayThread.start();
 
         Debug.open();
         Debug.println("onCreate");
@@ -121,6 +122,13 @@ public class MainActivity extends Activity implements Runnable {
 
     @Override
     protected void onDestroy() {
+        if (this.captureThread != null) {
+            this.captureThread.interrupt();
+        }
+        if (this.displayThread != null) {
+            this.displayThread.interrupt();
+        }
+        unregisterUsbDetachedReceiver();
         Debug.println("onDestroy");
         Debug.close();
         super.onDestroy();
