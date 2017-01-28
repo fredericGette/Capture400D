@@ -199,6 +199,7 @@ public class MainActivity extends Activity implements Runnable {
                     this.mConnection = null;
                     this.session = null;
                     this.mDevice = null;
+                    finish();
                 }
             } else if (device == null && this.mDevice == null) {
                 error_beep();
@@ -221,6 +222,7 @@ public class MainActivity extends Activity implements Runnable {
         } catch (Throwable e) {
             error_beep();
             Debug.print(e);
+            finish();
         }
     }
 
