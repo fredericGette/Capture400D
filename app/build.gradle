@@ -10,8 +10,8 @@ android {
     buildToolsVersion "23.0.1"
     defaultConfig {
         applicationId "com.capture400d"
-        minSdkVersion 19
-        targetSdkVersion 23
+        minSdkVersion 12
+        targetSdkVersion 12
         versionName '1.1'
         versionCode 2
     }
