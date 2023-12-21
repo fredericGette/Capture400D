@@ -7,12 +7,12 @@ android {
             storeFile file('/home/frederic/keystores/android.jks')
         }
     }
-    compileSdk 33
+    compileSdk 34
     defaultConfig {
         buildToolsVersion = "34.0.0"
         applicationId "com.capture400d"
-        minSdkVersion 12
-        targetSdkVersion 33
+        minSdkVersion 14
+        targetSdkVersion 34
         versionName '1.2'
         versionCode 3
     }
@@ -29,6 +29,6 @@ android {
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     testImplementation 'junit:junit:4.12'
-    implementation 'com.android.support:appcompat-v7:23.1.1'
-    implementation 'com.android.support:design:23.1.1'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
 }
